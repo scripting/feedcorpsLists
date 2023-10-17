@@ -11,16 +11,22 @@ var config = {
 	port: process.env.PORT || 1424,
 	urlRepoFolder: "https://raw.githubusercontent.com/scripting/a8c-FeedLand-Support/main/", 
 	nameListsFolder: "lists/",
+	dataFolder: "",
 	userAgent: myProductName + "/" + myVersion,
 	flPostEnabled: true,
 	flAllowAccessFromAnywhere: true, 
 	flLogToConsole: true, //davehttp logs each request to the console
 	flTraceOnError: false //davehttp does not try to catch the error
 	};
+const fnameConfig = "config.json";
 
 var stats = {
 	ctHits: 0,
-	whenLastHit: undefined
+	whenLastHit: undefined,
+	ctCacheReloads: 0,
+	whenLastCacheReload: undefined,
+	theOutline: undefined,
+	outlineCache: new Object ()
 	};
 const fnameStats = "stats.json";
 var flStatsChanged = false;
@@ -70,6 +76,80 @@ function httpRequest (url, callback) {
 			}
 		});
 	}
+function getDirectory (callback) {
+	davegithub.getDirectory (config.github, config.nameListsFolder, function (err, jstruct) {
+		if (err) {
+			callback (err);
+			}
+		else {
+			var theOutline = {
+				opml: {
+					head: {
+						title: "All the reading lists currently available from lists.feedcorps.org."
+						},
+					body: {
+						subs: [
+							]
+						}
+					}
+				};
+			jstruct.forEach (function (item) {
+				if (utils.endsWith (item.name, ".opml")) {
+					theOutline.opml.body.subs.push ({
+						text: item.name,
+						type: "include",
+						url: "https://lists.feedcorps.org/" + item.name
+						});
+					}
+				});
+			
+			stats.theOutline = theOutline;
+			statsChanged ();
+			
+			callback (undefined, theOutline);
+			}
+		});
+	}
+function getOutline (fname, callback) {
+	const url = config.urlRepoFolder + config.nameListsFolder + fname;
+	httpRequest (url, function (err, opmltext) {
+		if (err) {
+			callback (err);
+			}
+		else {
+			opml.parse (opmltext, callback);
+			}
+		});
+	}
+
+function loadOutlineCache (callback) {
+	const outlinelist = stats.theOutline.opml.body.subs;
+	function doNext (ix) {
+		if (ix < outlinelist.length) {
+			getOutline (outlinelist [ix].text, function (err, theOutline) {
+				stats.outlineCache [outlinelist [ix].text] = theOutline;
+				doNext (ix + 1);
+				});
+			}
+		else {
+			statsChanged ();
+			callback ();
+			}
+		}
+	doNext (0);
+	}
+function reloadCaches (callback) {
+	getDirectory (function () {
+		loadOutlineCache (function () {
+			stats.ctCacheReloads++;
+			stats.whenLastCacheReload = new Date ();
+			statsChanged ();
+			if (callback !== undefined) {
+				callback ();
+				}
+			});
+		});
+	}
 
 function handleHttpRequest (theRequest) {
 	var now = new Date ();
@@ -106,40 +186,11 @@ function handleHttpRequest (theRequest) {
 		theRequest.httpReturn (500, "application/json", utils.jsonStringify (jstruct));
 		}
 	function returnOpmlFile (fname) {
-		const url = config.urlRepoFolder + config.nameListsFolder + fname;
-		httpRequest (url, function (err, opmltext) {
+		getOutline (fname, function (err, theOutline) {
 			if (err) {
 				returnError (err);
 				}
 			else {
-				theRequest.httpReturn (200, "text/xml", opmltext);
-				}
-			});
-		}
-	function returnListOfLists () {
-		davegithub.getDirectory (config.github, config.nameListsFolder, function (err, jstruct) {
-			if (err) {
-				returnError (err);
-				}
-			else {
-				var theOutline = {
-					opml: {
-						head: {
-							title: "All the reading lists currently available from lists.feedcorps.org."
-							},
-						body: {
-							subs: [
-								]
-							}
-						}
-					};
-				jstruct.forEach (function (item) {
-					theOutline.opml.body.subs.push ({
-						text: item.name,
-						type: "include",
-						url: "https://lists.feedcorps.org/" + item.name
-						});
-					});
 				theRequest.httpReturn (200, "text/xml", opml.stringify (theOutline));
 				}
 			});
@@ -158,7 +209,6 @@ function handleHttpRequest (theRequest) {
 			}
 		}
 	
-	
 	stats.ctHits++;
 	stats.whenLastHit = now;
 	statsChanged ();
@@ -167,7 +217,14 @@ function handleHttpRequest (theRequest) {
 		case "GET":
 			switch (theRequest.lowerpath) {
 				case "/": 
-					returnListOfLists ();
+					getDirectory (function (err, theOutline) {
+						if (err) {
+							returnError (err);
+							}
+						else {
+							theRequest.httpReturn (200, "text/xml", opml.stringify (theOutline));
+							}
+						});
 					return (true);
 				default: 
 					returnOpmlFile (theRequest.lowerpath);
@@ -178,6 +235,10 @@ function handleHttpRequest (theRequest) {
 	}
 
 function everyMinute () {
+	var now = new Date ();
+	if ((now.getMinutes () % 15) == 0) { //refresh caches every fifteen minutes
+		reloadCaches ();
+		}
 	}
 function everySecond () {
 	if (flStatsChanged) {
@@ -203,11 +264,13 @@ function readConfig (fname, data, callback) {
 		});
 	}
 
-readConfig ("config.json", config, function (err) {
+readConfig (fnameConfig, config, function (err) {
 	console.log ("\n" + myProductName + " v" + myVersion + ": " + new Date ().toLocaleTimeString () + ", port == " + config.port + ".\n");
 	console.log ("\nconfig == " + utils.jsonStringify (config));
 	config.github.userAgent = config.userAgent;
-	utils.runEveryMinute (everyMinute);
-	setInterval (everySecond, 1000);
-	davehttp.start (config, handleHttpRequest);
+	reloadCaches (function () { //causes current directory to be cached
+		davehttp.start (config, handleHttpRequest);
+		utils.runEveryMinute (everyMinute);
+		setInterval (everySecond, 1000);
+		});
 	});
