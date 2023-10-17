@@ -9,9 +9,8 @@ const davegithub = require ("davegithub");
 
 var config = {
 	port: process.env.PORT || 1424,
-	
-	urlListsFolder: "https://raw.githubusercontent.com/scripting/a8c-FeedLand-Support/main/lists/", 
-	
+	urlRepoFolder: "https://raw.githubusercontent.com/scripting/a8c-FeedLand-Support/main/", 
+	nameListsFolder: "lists/",
 	userAgent: myProductName + "/" + myVersion,
 	flPostEnabled: true,
 	flAllowAccessFromAnywhere: true, 
@@ -107,7 +106,7 @@ function handleHttpRequest (theRequest) {
 		theRequest.httpReturn (500, "application/json", utils.jsonStringify (jstruct));
 		}
 	function returnOpmlFile (fname) {
-		const url = config.urlListsFolder + fname;
+		const url = config.urlRepoFolder + config.nameListsFolder + fname;
 		httpRequest (url, function (err, opmltext) {
 			if (err) {
 				returnError (err);
@@ -118,7 +117,7 @@ function handleHttpRequest (theRequest) {
 			});
 		}
 	function returnListOfLists () {
-		davegithub.getDirectory (config.github, "lists/", function (err, jstruct) {
+		davegithub.getDirectory (config.github, config.nameListsFolder, function (err, jstruct) {
 			if (err) {
 				returnError (err);
 				}
@@ -207,7 +206,7 @@ function readConfig (fname, data, callback) {
 readConfig ("config.json", config, function (err) {
 	console.log ("\n" + myProductName + " v" + myVersion + ": " + new Date ().toLocaleTimeString () + ", port == " + config.port + ".\n");
 	console.log ("\nconfig == " + utils.jsonStringify (config));
-	config.github.userAgent = myProductName + " v" + myVersion;
+	config.github.userAgent = config.userAgent;
 	utils.runEveryMinute (everyMinute);
 	setInterval (everySecond, 1000);
 	davehttp.start (config, handleHttpRequest);
