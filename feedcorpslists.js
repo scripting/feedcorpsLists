@@ -111,13 +111,21 @@ function getDirectory (callback) {
 		});
 	}
 function getOutline (fname, callback) {
-	const url = config.urlRepoFolder + config.nameListsFolder + fname;
+	const url = config.urlRepoFolder + config.nameListsFolder + fname + "?nocache=" + utils.random (1, 100000);
 	httpRequest (url, function (err, opmltext) {
 		if (err) {
 			callback (err);
 			}
 		else {
-			opml.parse (opmltext, callback);
+			opml.parse (opmltext, function (err, theOutline) {
+				if (err) {
+					callback (err);
+					}
+				else {
+					stats.outlineCache [fname] = theOutline;
+					callback (undefined, theOutline);
+					}
+				});
 			}
 		});
 	}
@@ -151,6 +159,30 @@ function reloadCaches (callback) {
 		});
 	}
 
+function outlineToReadinglistJson (theOutline) {
+	const subslist = theOutline.opml.body.subs;
+	var jstruct = new Array ();
+	
+	subslist.forEach (function (item) {
+		const outlineInCache = stats.outlineCache [item.text];
+		const outlineHead = outlineInCache.opml.head;
+		var feedUrls = new Array ();
+		outlineInCache.opml.body.subs.forEach (function (item) {
+			feedUrls.push (item.xmlUrl);
+			});
+		jstruct.push ({
+			opmlUrl: item.url,
+			title: outlineHead.title,
+			description: outlineHead.description,
+			whenCreated: outlineHead.dateCreated,
+			whenModified: outlineHead.dateModified,
+			ctChecks: undefined,
+			feedUrls
+			});
+		});
+	return (jstruct);
+	}
+
 function handleHttpRequest (theRequest) {
 	var now = new Date ();
 	const params = theRequest.params;
@@ -169,6 +201,9 @@ function handleHttpRequest (theRequest) {
 			theString = "";
 			}
 		theRequest.httpReturn (200, "text/plain", theString);
+		}
+	function returnXml (xmltext) {
+		theRequest.httpReturn (200, "text/xml", xmltext);
 		}
 	function returnNotFound () {
 		theRequest.httpReturn (404, "text/plain", "Not found.");
@@ -222,7 +257,14 @@ function handleHttpRequest (theRequest) {
 							returnError (err);
 							}
 						else {
-							theRequest.httpReturn (200, "text/xml", opml.stringify (theOutline));
+							switch (utils.stringLower (params.format)) {
+								case "json":
+									returnData (outlineToReadinglistJson (theOutline));
+									break;
+								default:
+									returnXml (opml.stringify (theOutline));
+									break;
+								}
 							}
 						});
 					return (true);
