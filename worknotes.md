@@ -1,3 +1,7 @@
+#### 10/19/23; 9:47:05 AM by DW
+
+Handle structured outlines, respect comments, only push items of type "rss" with an xmlUrl attribute.
+
 #### 10/18/23; 11:49:15 AM by DW
 
 Side-effect of reading an outline is that it replaces the previous version in the cache. 

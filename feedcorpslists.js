@@ -1,4 +1,4 @@
-const myVersion = "0.4.0", myProductName = "feedcorpslists";  
+const myVersion = "0.4.1", myProductName = "feedcorpslists";  
 
 const fs = require ("fs");
 const request = require ("request");
@@ -31,6 +31,9 @@ var stats = {
 const fnameStats = "stats.json";
 var flStatsChanged = false;
 
+function notComment (item) { //8/21/22 by DW
+	return (!utils.getBoolean (item.isComment));
+	}
 function statsChanged () {
 	flStatsChanged = true;
 	}
@@ -161,16 +164,23 @@ function reloadCaches (callback) {
 
 function outlineToReadinglistJson (theOutline) {
 	const subslist = theOutline.opml.body.subs;
-	var jstruct = new Array ();
+	var feedlistArray = new Array ();
 	
-	subslist.forEach (function (item) {
+	function pushFeedOnFeedListArray (item) {
 		const outlineInCache = stats.outlineCache [item.text];
 		const outlineHead = outlineInCache.opml.head;
 		var feedUrls = new Array ();
-		outlineInCache.opml.body.subs.forEach (function (item) {
-			feedUrls.push (item.xmlUrl);
+		opml.visitAll (outlineInCache, function (node) {
+			if (notComment (node)) {
+				if (node.type == "rss") {
+					if (node.xmlUrl !== undefined) {
+						feedUrls.push (node.xmlUrl);
+						}
+					}
+				}
+			return (true); //keep visiting
 			});
-		jstruct.push ({
+		feedlistArray.push ({
 			opmlUrl: item.url,
 			title: outlineHead.title,
 			description: outlineHead.description,
@@ -179,8 +189,18 @@ function outlineToReadinglistJson (theOutline) {
 			ctChecks: undefined,
 			feedUrls
 			});
+		}
+	
+	opml.visitAll (theOutline, function (node) {
+		if (notComment (node)) {
+			pushFeedOnFeedListArray (node);
+			}
+		return (true); //keep visiting
 		});
-	return (jstruct);
+	
+	
+	
+	return (feedlistArray);
 	}
 
 function handleHttpRequest (theRequest) {
@@ -278,7 +298,7 @@ function handleHttpRequest (theRequest) {
 
 function everyMinute () {
 	var now = new Date ();
-	if ((now.getMinutes () % 15) == 0) { //refresh caches every fifteen minutes
+	if ((now.getMinutes () % 5) == 0) { //refresh caches every 5 minutes
 		reloadCaches ();
 		}
 	}

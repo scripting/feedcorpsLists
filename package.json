@@ -1,7 +1,7 @@
 {
 	"name": "feedcorpslists",
 	"description": "Node app that serves reading lists to FeedLand. A pump primer for a boostrap.",
-	"version": "0.4.0", 
+	"version": "0.4.1", 
 	"main": "feedcorpslists.js",
 	"license": "MIT",
 	"repository": {
