@@ -8,13 +8,14 @@ const opml = require ("opml");
 
 var config = {
 	port: process.env.PORT || 1424,
+	urlServer: "https://lists.feedcorps.org/", //8/8/25 by DW
 	dataFolder: "",
 	userAgent: myProductName + "/" + myVersion,
 	flPostEnabled: true,
 	flAllowAccessFromAnywhere: true, 
 	flLogToConsole: true, //davehttp logs each request to the console
 	flTraceOnError: false, //davehttp does not try to catch the error
-	feedCorpsLists: [
+	feedCorpsLists: [ //8/8/25 by DW
 		{
 			opmlUrl: "https://feedland.social/opml?screenname=davewiner",
 			title: "Dave's feeds",
@@ -110,6 +111,9 @@ function httpRequest (url, callback) {
 		});
 	}
 
+function getFeedCorpsUrl (item) { //8/8/25 by DW
+	return (config.urlServer + item.fname);
+	}
 function getDirectoryOutline () { //8/8/25 by DW
 	const now = new Date ();
 	var theOutline = {
@@ -126,7 +130,7 @@ function getDirectoryOutline () { //8/8/25 by DW
 	config.feedCorpsLists.forEach (function (item) {
 		theOutline.opml.body.subs.push ({
 			type: "include",
-			url: item.opmlUrl,
+			url: getFeedCorpsUrl (item),
 			text: item.title,
 			description: item.description,
 			whenCreated: netStandardDateString (item.whenCreated),
@@ -144,7 +148,7 @@ function getDirectoryJson () { //8/8/25 by DW
 			feedUrls.push (item.xmlUrl);
 			});
 		theJsonArray.push ({
-			opmlUrl: item.opmlUrl,
+			opmlUrl: getFeedCorpsUrl (item),
 			title: item.title,
 			description: item.description,
 			whenCreated: item.whenCreated,
