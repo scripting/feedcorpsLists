@@ -1,22 +1,48 @@
-const myVersion = "0.4.1", myProductName = "feedcorpslists";  
+const myVersion = "0.5.0", myProductName = "feedcorpslists";  
 
 const fs = require ("fs");
 const request = require ("request");
 const utils = require ("daveutils");
 const davehttp = require ("davehttp");
 const opml = require ("opml");
-const davegithub = require ("davegithub");
 
 var config = {
 	port: process.env.PORT || 1424,
-	urlRepoFolder: "https://raw.githubusercontent.com/scripting/a8c-FeedLand-Support/main/", 
-	nameListsFolder: "lists/",
 	dataFolder: "",
 	userAgent: myProductName + "/" + myVersion,
 	flPostEnabled: true,
 	flAllowAccessFromAnywhere: true, 
 	flLogToConsole: true, //davehttp logs each request to the console
-	flTraceOnError: false //davehttp does not try to catch the error
+	flTraceOnError: false, //davehttp does not try to catch the error
+	feedCorpsLists: [
+		{
+			opmlUrl: "https://feedland.social/opml?screenname=davewiner",
+			title: "Dave's feeds",
+			link: "https://news.scripting.com/",
+			description: "All the feeds Dave follows in FeedLand.",
+			fname: "daveallfeeds.opml",
+			whenCreated: "16 Feb 2024 5:00:00 GMT",
+			whenModified: "09 Aug 2025 12:33:39 GMT"
+			},
+		{
+			opmlUrl: "https://feedland.social/opml?screenname=davewiner&catname=blogroll",
+			title: "Dave's blogroll",
+			link: "https://blogroll.social/",
+			description: "All the feeds in the blogroll on scripting.com.",
+			fname: "daveblogroll.opml",
+			whenCreated: "16 Feb 2024 5:00:00 GMT",
+			whenModified: "09 Aug 2025 12:33:39 GMT"
+			},
+		{
+			opmlUrl: "https://feedland.social/opml?screenname=davewiner&catname=podcasts",
+			title: "Dave's favorite podcasts",
+			link: "https://news.scripting.com/?tab=podcasts",
+			description: "Some of the podcasts Dave listens to (someday it'll be all of them).",
+			fname: "davepodcasts.opml",
+			whenCreated: "11 Jan 2001 5:00:00 GMT",
+			whenModified: "09 Aug 2025 12:33:39 GMT"
+			},
+		]
 	};
 const fnameConfig = "config.json";
 
@@ -31,6 +57,12 @@ var stats = {
 const fnameStats = "stats.json";
 var flStatsChanged = false;
 
+function netStandardDateString (theDate) { //8/8/25 by DW
+	return (new Date (theDate).toUTCString ());
+	}
+function nowstring () {
+	return (netStandardDateString (new Date ())); //8/8/25 by DW
+	}
 function notComment (item) { //8/21/22 by DW
 	return (!utils.getBoolean (item.isComment));
 	}
@@ -44,7 +76,6 @@ function writeStats () {
 			});
 		});
 	}
-
 function readConfig (f, config, callback) {
 	fs.readFile (f, function (err, jsontext) {
 		if (!err) {
@@ -61,7 +92,6 @@ function readConfig (f, config, callback) {
 		callback ();
 		});
 	}
-
 function httpRequest (url, callback) {
 	request (url, function (err, response, data) {
 		if (err) {
@@ -79,66 +109,73 @@ function httpRequest (url, callback) {
 			}
 		});
 	}
-function getDirectory (callback) {
-	davegithub.getDirectory (config.github, config.nameListsFolder, function (err, jstruct) {
-		if (err) {
-			callback (err);
-			}
-		else {
-			var theOutline = {
-				opml: {
-					head: {
-						title: "All the reading lists currently available from lists.feedcorps.org."
-						},
-					body: {
-						subs: [
-							]
-						}
-					}
-				};
-			jstruct.forEach (function (item) {
-				if (utils.endsWith (item.name, ".opml")) {
-					theOutline.opml.body.subs.push ({
-						text: item.name,
-						type: "include",
-						url: "https://lists.feedcorps.org/" + item.name
-						});
-					}
-				});
-			
-			stats.theOutline = theOutline;
-			statsChanged ();
-			
-			callback (undefined, theOutline);
-			}
-		});
-	}
-function getOutline (fname, callback) {
-	const url = config.urlRepoFolder + config.nameListsFolder + fname + "?nocache=" + utils.random (1, 100000);
-	httpRequest (url, function (err, opmltext) {
-		if (err) {
-			callback (err);
-			}
-		else {
-			opml.parse (opmltext, function (err, theOutline) {
-				if (err) {
-					callback (err);
-					}
-				else {
-					stats.outlineCache [fname] = theOutline;
-					callback (undefined, theOutline);
-					}
-				});
-			}
-		});
-	}
 
-function loadOutlineCache (callback) {
-	const outlinelist = stats.theOutline.opml.body.subs;
+function getDirectoryOutline () { //8/8/25 by DW
+	const now = new Date ();
+	var theOutline = {
+		opml: {
+			head: {
+				title: "All the reading lists currently available from lists.feedcorps.org."
+				},
+			body: {
+				subs: [
+					]
+				}
+			}
+		};
+	config.feedCorpsLists.forEach (function (item) {
+		theOutline.opml.body.subs.push ({
+			type: "include",
+			url: item.opmlUrl,
+			text: item.title,
+			description: item.description,
+			whenCreated: netStandardDateString (item.whenCreated),
+			whenModified: netStandardDateString (now),
+			});
+		});
+	return (theOutline);
+	}
+function getDirectoryJson () { //8/8/25 by DW
+	var theJsonArray = new Array ();
+	config.feedCorpsLists.forEach (function (item) {
+		var feedUrls = new Array ();
+		const theOutline = stats.outlineCache [item.opmlUrl];
+		theOutline.opml.body.subs.forEach (function (item) {
+			feedUrls.push (item.xmlUrl);
+			});
+		theJsonArray.push ({
+			opmlUrl: item.opmlUrl,
+			title: item.title,
+			description: item.description,
+			whenCreated: item.whenCreated,
+			whenModified: item.whenModified,
+			feedUrls
+			});
+		});
+	return (theJsonArray);
+	}
+function loadOutlineCache (callback) { //8/8/25 by DW
+	function getOutline (url, callback) {
+		httpRequest (url, function (err, opmltext) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				opml.parse (opmltext, function (err, theOutline) {
+					if (err) {
+						callback (err);
+						}
+					else {
+						stats.outlineCache [url] = theOutline;
+						callback (undefined, theOutline);
+						}
+					});
+				}
+			});
+		}
 	function doNext (ix) {
-		if (ix < outlinelist.length) {
-			getOutline (outlinelist [ix].text, function (err, theOutline) {
-				stats.outlineCache [outlinelist [ix].text] = theOutline;
+		if (ix < config.feedCorpsLists.length) {
+			getOutline (config.feedCorpsLists [ix].opmlUrl, function (err, theOutline) {
 				doNext (ix + 1);
 				});
 			}
@@ -149,58 +186,15 @@ function loadOutlineCache (callback) {
 		}
 	doNext (0);
 	}
-function reloadCaches (callback) {
-	getDirectory (function () {
-		loadOutlineCache (function () {
-			stats.ctCacheReloads++;
-			stats.whenLastCacheReload = new Date ();
-			statsChanged ();
-			if (callback !== undefined) {
-				callback ();
-				}
-			});
-		});
-	}
-
-function outlineToReadinglistJson (theOutline) {
-	const subslist = theOutline.opml.body.subs;
-	var feedlistArray = new Array ();
-	
-	function pushFeedOnFeedListArray (item) {
-		const outlineInCache = stats.outlineCache [item.text];
-		const outlineHead = outlineInCache.opml.head;
-		var feedUrls = new Array ();
-		opml.visitAll (outlineInCache, function (node) {
-			if (notComment (node)) {
-				if (node.type == "rss") {
-					if (node.xmlUrl !== undefined) {
-						feedUrls.push (node.xmlUrl);
-						}
-					}
-				}
-			return (true); //keep visiting
-			});
-		feedlistArray.push ({
-			opmlUrl: item.url,
-			title: outlineHead.title,
-			description: outlineHead.description,
-			whenCreated: outlineHead.dateCreated,
-			whenModified: outlineHead.dateModified,
-			ctChecks: undefined,
-			feedUrls
-			});
-		}
-	
-	opml.visitAll (theOutline, function (node) {
-		if (notComment (node)) {
-			pushFeedOnFeedListArray (node);
+function reloadCaches (callback) { //8/8/25 by DW
+	loadOutlineCache (function () {
+		stats.ctCacheReloads++;
+		stats.whenLastCacheReload = new Date ();
+		statsChanged ();
+		if (callback !== undefined) {
+			callback ();
 			}
-		return (true); //keep visiting
 		});
-	
-	
-	
-	return (feedlistArray);
 	}
 
 function handleHttpRequest (theRequest) {
@@ -240,15 +234,25 @@ function handleHttpRequest (theRequest) {
 	function returnError (jstruct) {
 		theRequest.httpReturn (500, "application/json", utils.jsonStringify (jstruct));
 		}
-	function returnOpmlFile (fname) {
-		getOutline (fname, function (err, theOutline) {
-			if (err) {
-				returnError (err);
-				}
-			else {
-				theRequest.httpReturn (200, "text/xml", opml.stringify (theOutline));
+	function returnOpmlFile (lowerpath) {
+		const fname = utils.stringDelete (lowerpath, 1, 1);
+		var theOutline = undefined;
+		config.feedCorpsLists.forEach (function (item) {
+			if (item.fname == fname) {
+				theOutline = stats.outlineCache [item.opmlUrl];
+				theOutline.opml.head.title = item.title;
+				theOutline.opml.head.link = item.link;
+				theOutline.opml.head.description = item.description;
+				theOutline.opml.head.whenCreated = item.whenCreated;
+				theOutline.opml.head.whenModified = item.whenModified;
 				}
 			});
+		if (theOutline === undefined) {
+			returnNotFound ();
+			}
+		else {
+			returnXml (opml.stringify (theOutline))
+			}
 		}
 	function httpReturn (err, returnedValue) {
 		if (err) {
@@ -272,21 +276,14 @@ function handleHttpRequest (theRequest) {
 		case "GET":
 			switch (theRequest.lowerpath) {
 				case "/": 
-					getDirectory (function (err, theOutline) {
-						if (err) {
-							returnError (err);
-							}
-						else {
-							switch (utils.stringLower (params.format)) {
-								case "json":
-									returnData (outlineToReadinglistJson (theOutline));
-									break;
-								default:
-									returnXml (opml.stringify (theOutline));
-									break;
-								}
-							}
-						});
+					switch (utils.stringLower (params.format)) {
+						case "json":
+							returnData (getDirectoryJson ());
+							break;
+						default:
+							returnXml (opml.stringify (getDirectoryOutline ()));
+							break;
+						}
 					return (true);
 				default: 
 					returnOpmlFile (theRequest.lowerpath);
@@ -308,31 +305,17 @@ function everySecond () {
 		writeStats ();
 		}
 	}
-function readConfig (fname, data, callback) {
-	fs.readFile (fname, function (err, jsontext) {
-		if (!err) {
-			var jstruct;
-			try {
-				jstruct = JSON.parse (jsontext);
-				for (var x in jstruct) {
-					data [x] = jstruct [x];
-					}
-				}
-			catch (err) {
-				console.log ("readConfig: fname == " + fname + ", err.message == " + utils.jsonStringify (err.message));
-				}
-			}
-		callback ();
-		});
-	}
+
 
 readConfig (fnameConfig, config, function (err) {
 	console.log ("\n" + myProductName + " v" + myVersion + ": " + new Date ().toLocaleTimeString () + ", port == " + config.port + ".\n");
 	console.log ("\nconfig == " + utils.jsonStringify (config));
-	config.github.userAgent = config.userAgent;
-	reloadCaches (function () { //causes current directory to be cached
+	reloadCaches (function () {
 		davehttp.start (config, handleHttpRequest);
 		utils.runEveryMinute (everyMinute);
 		setInterval (everySecond, 1000);
 		});
 	});
+
+
+
